@@ -1,0 +1,407 @@
+{% extends 'base.html' %}
+{% block title %}Interview Results — MockMinds{% endblock %}
+
+{% block content %}
+
+<div class="res-page-wrap">
+
+  <!-- Session meta eyebrow -->
+  <div class="res-eyebrow" id="res-session-eyebrow">Interview Results</div>
+
+  <!-- ── Verdict hero (JS-populated) ──────────────────── -->
+  <div class="verdict-hero-v2" id="verdictBanner" aria-live="polite" style="display:none;">
+    <div>
+      <h1 id="verdict-heading">—</h1>
+      <p class="verdict-summary-v2" id="verdict-summary-text"></p>
+      <div id="performance-snapshot" style="margin-top:14px;max-width:560px;"></div>
+      <div id="snapshot-stats" style="display:flex;gap:28px;margin-top:18px;flex-wrap:wrap;"></div>
+    </div>
+    <div class="verdict-score-card">
+      <div class="verdict-tag-pill" id="verdict-tag-pill">
+        <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#001613;"></span>
+        Verdict
+      </div>
+      <div class="verdict-num">
+        <span id="verdict-score">—</span>
+        <small>/100</small>
+      </div>
+      <div class="verdict-delta" id="verdict-delta"></div>
+      <div class="verdict-progress-bar">
+        <span id="verdict-prog-bar" style="width:0%;"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Pillar scores ─────────────────────────────────── -->
+  <div class="pillars-grid">
+    <div class="pillar">
+      <div class="pillar-label">Confidence</div>
+      <div class="pillar-num"><span id="avgConfidence">—</span><small>/10</small></div>
+      <div class="pillar-judgement" id="conf-judgement">Across all answers</div>
+      <div class="pillar-bar"><span id="conf-bar" style="background:var(--accent);width:0%;"></span></div>
+    </div>
+    <div class="pillar">
+      <div class="pillar-label">Technical</div>
+      <div class="pillar-num"><span id="avgTechnical">—</span><small>/10</small></div>
+      <div class="pillar-judgement" id="tech-judgement">Depth &amp; accuracy</div>
+      <div class="pillar-bar"><span id="tech-bar" style="background:var(--violet);width:0%;"></span></div>
+    </div>
+    <div class="pillar">
+      <div class="pillar-label">Communication</div>
+      <div class="pillar-num"><span id="avgCommunication">—</span><small>/10</small></div>
+      <div class="pillar-judgement" id="comm-judgement">Clarity &amp; delivery</div>
+      <div class="pillar-bar"><span id="comm-bar" style="background:var(--success);width:0%;"></span></div>
+    </div>
+  </div>
+
+  <!-- ── Skill summary ─────────────────────────────────── -->
+  {% if full_evaluation %}
+  <div class="card" id="skillSummaryCard" style="margin-bottom:24px;display:none;">
+    <div class="section-eyebrow">Skills Assessment</div>
+    <div id="skillGrid" class="skill-tags" style="gap:8px;"></div>
+  </div>
+  {% endif %}
+
+  <!-- ── Question breakdown ────────────────────────────── -->
+  <div class="qbreakdown">
+    <div class="qb-head">
+      <h3>Question breakdown</h3>
+      <div class="qb-col-legend">Conf · Tech · Comm</div>
+    </div>
+    <div class="qb-body" id="minimalChart"></div>
+  </div>
+
+  <!-- ── Feedback cards ────────────────────────────────── -->
+  <div class="card" style="margin-bottom:24px;padding:0;overflow:hidden;">
+    <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+      <h3 style="font-size:18px;font-weight:600;color:var(--text);">Answer analysis</h3>
+    </div>
+    <div id="resultsList" style="padding:8px 0;"></div>
+  </div>
+
+  <!-- ── Actions ───────────────────────────────────────── -->
+  <div class="res-actions">
+    <button class="btn btn-primary" onclick="window.location.href='/interview'">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+      Retake Interview
+    </button>
+    <button class="btn btn-ghost" onclick="window.print()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+      Download Scorecard
+    </button>
+    <button class="btn btn-ghost" onclick="window.location.href='/'">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      Dashboard
+    </button>
+  </div>
+
+</div>
+
+<script>
+// ── Helpers ──────────────────────────────────────────────
+function escHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str || '';
+  return d.innerHTML;
+}
+function toDisplay(v) {
+  if (!v) return 0;
+  return v > 10 ? (v / 10) : v;
+}
+function scoreClass(v) {
+  return v >= 8 ? 'good' : v >= 5 ? 'mid' : 'bad';
+}
+
+// ── Per-answer results ────────────────────────────────────
+const results    = {{ (results or [])|tojson }};
+const fullEval   = {{ (full_evaluation or {})|tojson }};
+const strictMap  = {};
+if (fullEval && fullEval.answer_evaluation) {
+  fullEval.answer_evaluation.forEach((ae, idx) => { strictMap[idx] = ae; });
+}
+
+if (results.length > 0) {
+  const avg = (key) =>
+    (results.reduce((s, r) => s + toDisplay(r.result && r.result[key]), 0) / results.length).toFixed(1);
+
+  const cAvg = parseFloat(avg('confidence'));
+  const tAvg = parseFloat(avg('technical'));
+  const mAvg = parseFloat(avg('communication'));
+
+  // Pillars
+  document.getElementById('avgConfidence').textContent    = cAvg.toFixed(1);
+  document.getElementById('avgTechnical').textContent     = tAvg.toFixed(1);
+  document.getElementById('avgCommunication').textContent = mAvg.toFixed(1);
+
+  requestAnimationFrame(() => setTimeout(() => {
+    document.getElementById('conf-bar').style.width = (cAvg * 10) + '%';
+    document.getElementById('tech-bar').style.width = (tAvg * 10) + '%';
+    document.getElementById('comm-bar').style.width = (mAvg * 10) + '%';
+  }, 150));
+
+  // Question breakdown rows
+  const chartDiv = document.getElementById('minimalChart');
+  results.forEach((r, i) => {
+    const conf  = toDisplay(r.result && r.result.confidence)    || 0;
+    const tech  = toDisplay(r.result && r.result.technical)     || 0;
+    const comm  = toDisplay(r.result && r.result.communication) || 0;
+    const score = (r.overall_score !== undefined && r.overall_score !== null)
+      ? Number(r.overall_score).toFixed(1)
+      : ((conf + tech + comm) / 3).toFixed(1);
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display:grid;grid-template-columns:36px 1fr 56px 56px 56px 80px;gap:16px;align-items:center;padding:14px 22px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:13px;transition:background 0.15s;';
+    row.addEventListener('mouseover', () => row.style.background = 'rgba(255,255,255,0.02)');
+    row.addEventListener('mouseout',  () => row.style.background = '');
+    row.innerHTML = `
+      <div style="font-family:var(--font-mono);color:var(--text-secondary);font-size:11px;">${String(i+1).padStart(2,'0')}</div>
+      <div style="font-weight:500;line-height:1.4;color:var(--text);">${escHtml(r.question || 'Question ' + (i+1))}</div>
+      <div class="qb-cell ${scoreClass(conf)}" style="text-align:center;">${conf}</div>
+      <div class="qb-cell ${scoreClass(tech)}" style="text-align:center;">${tech}</div>
+      <div class="qb-cell ${scoreClass(comm)}" style="text-align:center;">${comm}</div>
+      <div style="font-family:var(--font-display);font-size:17px;font-weight:600;color:var(--text);text-align:right;">${score}<small style="font-size:11px;color:var(--text-secondary);font-weight:500;">/10</small></div>
+    `;
+    chartDiv.appendChild(row);
+  });
+
+  // Answer analysis cards
+  const feedbackDiv = document.getElementById('resultsList');
+
+  // Map a 0-100 score to a colour bucket
+  const scoreColor = (v) => v >= 75 ? '#00d4aa' : v >= 50 ? '#fac850' : '#ff6b6b';
+
+  // Build a labelled progress bar for one dimension (0-100 input)
+  function dimBar(label, raw) {
+    const v = Math.max(0, Math.min(100, Math.round(raw || 0)));
+    const c = scoreColor(v);
+    return `
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <span style="font-size:11px;color:var(--text-secondary);text-transform:capitalize;letter-spacing:0.02em;">${label}</span>
+          <span style="font-size:11px;font-family:var(--font-mono);color:${c};">${v}</span>
+        </div>
+        <div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;">
+          <div style="height:100%;width:${v}%;background:${c};border-radius:2px;transition:width 0.8s ease;"></div>
+        </div>
+      </div>
+    `;
+  }
+
+  results.forEach((r, i) => {
+    const res   = r.result || {};
+    // Raw 0-100 dimension scores (NOT divided by 10)
+    const confRaw = Number(res.confidence    || 0);
+    const techRaw = Number(res.technical     || 0);
+    const commRaw = Number(res.communication || 0);
+    const score   = (r.overall_score !== undefined && r.overall_score !== null)
+      ? Number(r.overall_score).toFixed(1)
+      : (((confRaw + techRaw + commRaw) / 3) / 10).toFixed(1);
+    const strict = strictMap[i] || null;
+    const aiDown = !!res.ai_unavailable;
+
+    const card = document.createElement('div');
+    card.style.cssText = 'padding:18px 22px;border-bottom:1px solid rgba(255,255,255,0.04);animation:fadeUp 0.4s ease both;';
+    card.style.animationDelay = (i * 0.05) + 's';
+
+    const hasVoice = r.transcript && r.transcript.trim().length > 0;
+    const hasTyped = r.typed      && r.typed.trim().length      > 0;
+    const modeText  = (hasVoice && hasTyped) ? 'Speech + Typed' : hasVoice ? 'Speech' : hasTyped ? 'Typed' : 'No Input';
+    const modeColor = (hasVoice && hasTyped) ? '#8b7ff5' : hasVoice ? '#00d4b8' : hasTyped ? '#f0a500' : '#7a8499';
+
+    const answerText = (r.answer || r.final || r.transcript || r.typed || '').trim();
+
+    const strengths   = Array.isArray(res.strengths) ? res.strengths.filter(Boolean) : [];
+    const improves    = Array.isArray(res.areas_to_improve) ? res.areas_to_improve.filter(Boolean) : [];
+    const keyStrength = (res.key_strength || '').trim();
+    const keyGap      = (res.key_gap || '').trim();
+
+    const scoreColor10 = scoreColor(Number(score) * 10);
+
+    card.innerHTML = `
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap;">
+        <span style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-secondary);">Q${i+1}</span>
+        <span style="font-size:0.7rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,0.05);border:1px solid ${modeColor}33;color:${modeColor};">${escHtml(modeText)}</span>
+        ${aiDown ? `<span style="font-size:0.7rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:2px 8px;border-radius:999px;background:rgba(250,200,80,0.08);border:1px solid rgba(250,200,80,0.25);color:#fac850;" title="AI evaluation was unavailable when this answer was scored — heuristic fallback was used">Heuristic</span>` : ''}
+        <span style="margin-left:auto;font-family:var(--font-display);font-size:18px;font-weight:600;color:${scoreColor10};">${score}<small style="font-size:11px;color:var(--text-secondary);font-weight:500;">/10</small></span>
+      </div>
+
+      <p style="font-size:13px;font-weight:500;color:var(--text);line-height:1.5;margin-bottom:10px;">
+        ${escHtml(r.question || ('Question ' + (i+1)))}
+      </p>
+
+      <div style="margin-bottom:12px;">
+        <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px;">Your answer</div>
+        <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:6px;padding:10px 12px;font-size:13px;color:var(--text-secondary);line-height:1.6;max-height:160px;overflow-y:auto;white-space:pre-wrap;">${
+          answerText ? escHtml(answerText) : '<em style="color:var(--text-secondary);opacity:0.6;">No answer recorded</em>'
+        }</div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px;">
+        ${dimBar('confidence', confRaw)}
+        ${dimBar('technical', techRaw)}
+        ${dimBar('communication', commRaw)}
+      </div>
+
+      ${(res.feedback || res.summary) ? `
+        <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:10px;">
+          ${escHtml(res.feedback || res.summary)}
+        </p>
+      ` : ''}
+
+      ${strengths.length ? `
+        <div style="margin-bottom:8px;">
+          <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-secondary);margin-bottom:4px;">Strengths</div>
+          <ul style="margin:0;padding-left:18px;color:var(--text-secondary);font-size:13px;line-height:1.6;">
+            ${strengths.map(s => `<li>${escHtml(s)}</li>`).join('')}
+          </ul>
+        </div>
+      ` : ''}
+
+      ${improves.length ? `
+        <div style="margin-bottom:8px;">
+          <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-secondary);margin-bottom:4px;">Areas to improve</div>
+          <ul style="margin:0;padding-left:18px;color:var(--text-secondary);font-size:13px;line-height:1.6;">
+            ${improves.map(s => `<li>${escHtml(s)}</li>`).join('')}
+          </ul>
+        </div>
+      ` : ''}
+
+      ${(keyStrength || keyGap) ? `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;">
+          ${keyStrength ? `<div style="padding:8px 10px;background:rgba(0,212,170,0.06);border-left:2px solid #00d4aa;border-radius:0 6px 6px 0;font-size:12px;color:var(--text-secondary);line-height:1.5;"><strong style="color:#00d4aa;">Key strength: </strong>${escHtml(keyStrength)}</div>` : '<div></div>'}
+          ${keyGap      ? `<div style="padding:8px 10px;background:rgba(250,200,80,0.06);border-left:2px solid #fac850;border-radius:0 6px 6px 0;font-size:12px;color:var(--text-secondary);line-height:1.5;"><strong style="color:#fac850;">Key gap: </strong>${escHtml(keyGap)}</div>` : '<div></div>'}
+        </div>
+      ` : ''}
+
+      ${strict && strict.issues && strict.issues.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;">' + strict.issues.map(issue => `<span style="display:inline-flex;align-items:center;padding:3px 9px;border-radius:4px;font-size:11px;background:var(--amber-dim);color:var(--amber);border:1px solid rgba(240,160,48,0.2);">${escHtml(issue)}</span>`).join('') + '</div>' : ''}
+      ${strict && strict.justification ? `<p style="font-size:12px;color:var(--text-secondary);margin-top:8px;padding:10px 12px;background:rgba(255,255,255,0.02);border-left:2px solid var(--violet);border-radius:0 6px 6px 0;line-height:1.5;">${escHtml(strict.justification)}</p>` : ''}
+    `;
+    feedbackDiv.appendChild(card);
+  });
+}
+
+// ── Full evaluation: verdict hero ────────────────────────
+if (fullEval && fullEval.overall_evaluation) {
+  const oe      = fullEval.overall_evaluation;
+  const verdict = (oe.verdict || '').trim();
+  const score   = oe.final_score || 0;
+  let   summary = oe.summary || '';
+
+  // Defensive: scrub any legacy dev-error text that may exist on older DB rows.
+  // These phrases must never reach the user — they belong only in server logs.
+  const BANNED_SUMMARY_RE = /(rotate the gemini|gemini[_ ]?api[_ ]?key|daily quota|ai evaluator was unavailable|heuristic based on answer|quota to reset)/i;
+  if (BANNED_SUMMARY_RE.test(summary)) summary = '';
+
+  // Verdict-keyed analytical fallback if backend gave us nothing usable.
+  const VERDICT_SUMMARY = {
+    'Strong Hire': 'You demonstrated strong technical depth and communicated your ideas clearly. Your answers showed both breadth of knowledge and confidence under pressure.',
+    'Hire':        'Solid performance across the board. You showed good technical understanding and communicated your thought process well — a few areas to sharpen before the real interview.',
+    'Weak Hire':   'You showed potential but left gaps in technical depth or clarity. Focus on structuring answers more precisely and backing them with concrete examples.',
+    'Reject':      'Your answers need more depth and structure. Practise giving specific, example-driven responses and review the core concepts in your skill areas before your next interview.',
+  };
+  if (!summary) summary = VERDICT_SUMMARY[verdict] || VERDICT_SUMMARY['Weak Hire'];
+
+  const banner = document.getElementById('verdictBanner');
+  if (banner) {
+    banner.style.display = '';
+    const variantMap = { 'Strong Hire': 'strong', 'Hire': 'hire', 'Weak Hire': 'weak', 'Reject': 'reject' };
+    const variant = variantMap[verdict] || 'hire';
+    const colorMap = { strong: 'var(--accent)', hire: 'var(--success)', weak: 'var(--amber)', reject: 'var(--error)' };
+    const vc = colorMap[variant];
+
+    // Split "Strong Hire" into "Strong\nHire."
+    const parts = verdict.split(' ');
+    const h1html = parts.length > 1
+      ? parts.slice(0,-1).join(' ') + '<br><em>' + parts[parts.length-1] + '.</em>'
+      : '<em>' + verdict + '.</em>';
+
+    document.getElementById('verdict-heading').innerHTML = h1html;
+    document.getElementById('verdict-heading').style.color = 'var(--text)';
+    document.getElementById('verdict-summary-text').textContent = summary;
+    document.getElementById('verdict-tag-pill').style.background = vc;
+    document.getElementById('verdict-tag-pill').style.color = '#001613';
+    document.getElementById('verdict-score').textContent = Number(score);
+
+    requestAnimationFrame(() => setTimeout(() => {
+      document.getElementById('verdict-prog-bar').style.width = Math.min(100, Number(score)) + '%';
+    }, 200));
+
+    // ── Performance snapshot: strongest / weakest dimension callouts + key stats
+    const avg100 = (key) => {
+      const vals = results.map(r => Number((r.result || {})[key] || 0)).filter(v => v > 0);
+      return vals.length ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length) : 0;
+    };
+    const dims = [
+      { key: 'Confidence',    val: avg100('confidence')    },
+      { key: 'Technical',     val: avg100('technical')     },
+      { key: 'Communication', val: avg100('communication') },
+    ].filter(d => d.val > 0).sort((a, b) => b.val - a.val);
+
+    const strongMsg = {
+      'Confidence':    'You came across as assured and direct in your responses.',
+      'Technical':     'Your technical knowledge stood out as the strongest aspect of your performance.',
+      'Communication': 'Your ability to articulate ideas clearly was a highlight.',
+    };
+    const weakMsg = {
+      'Confidence':    'Work on speaking with more conviction — avoid hedging phrases like "I think" or "maybe".',
+      'Technical':     'Deepen your technical answers with specific metrics, tools, or implementation details.',
+      'Communication': 'Practise the STAR method (Situation → Task → Action → Result) to improve answer structure.',
+    };
+
+    const snapshotEl = document.getElementById('performance-snapshot');
+    if (snapshotEl && dims.length) {
+      const strongest = dims[0];
+      const weakest   = dims[dims.length - 1];
+      const lines = [];
+      if (strongest.val >= 60) lines.push(strongMsg[strongest.key]);
+      if (weakest.val < 60 && weakest.key !== strongest.key) lines.push(weakMsg[weakest.key]);
+      snapshotEl.innerHTML = lines
+        .filter(Boolean)
+        .map(l => `<p style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin:0 0 8px 0;">${escHtml(l)}</p>`)
+        .join('');
+    }
+
+    const statsEl = document.getElementById('snapshot-stats');
+    if (statsEl) {
+      const wordCount = (a) => (a || '').toString().trim().split(/\s+/).filter(Boolean).length;
+      const totalWords = results.reduce((s, r) => s + wordCount(r.answer || r.final || r.transcript || r.typed), 0);
+      const avgWords   = results.length ? Math.round(totalWords / results.length) : 0;
+      const strongest  = dims[0] || { key: '—', val: 0 };
+      const weakest    = dims[dims.length - 1] || { key: '—', val: 0 };
+      const stat = (label, value, color) => `
+        <div>
+          <p style="font-size:10px;font-family:var(--font-mono);letter-spacing:0.08em;text-transform:uppercase;color:var(--text-secondary);margin:0 0 4px 0;">${label}</p>
+          <p style="font-size:18px;font-family:var(--font-mono);color:${color || 'var(--text)'};margin:0;">${value}</p>
+        </div>`;
+      statsEl.innerHTML = [
+        stat('Questions',       results.length || 0),
+        stat('Avg Words',       avgWords),
+        stat('Strongest',       strongest.key, 'var(--accent)'),
+        stat('To Improve',      weakest.key,   'var(--amber)'),
+      ].join('');
+    }
+  }
+
+  // Skill summary chips
+  const grid = document.getElementById('skillGrid');
+  const skillCard = document.getElementById('skillSummaryCard');
+  if (grid && fullEval.skill_summary && fullEval.skill_summary.length) {
+    if (skillCard) skillCard.style.display = '';
+    fullEval.skill_summary.forEach((s) => {
+      const strength = (s.strength || 'Medium').toLowerCase().replace(/\s+/g, '-');
+      const colorMap2 = { strong: 'var(--accent)', medium: 'var(--text-secondary)', weak: 'var(--amber)' };
+      const bgMap    = { strong: 'var(--accent-dim)', medium: 'rgba(255,255,255,0.04)', weak: 'var(--amber-dim)' };
+      const c = colorMap2[strength] || 'var(--text-secondary)';
+      const bg = bgMap[strength] || 'rgba(255,255,255,0.04)';
+      const chip = document.createElement('div');
+      chip.className = 'skill-tag';
+      chip.style.cssText = `background:${bg};color:${c};border-color:${c}33;`;
+      chip.title = s.insight || '';
+      chip.innerHTML = `${escHtml(s.skill)} <small style="opacity:0.7;">${escHtml(s.strength)}</small>`;
+      grid.appendChild(chip);
+    });
+  }
+}
+</script>
+
+{% endblock %}
